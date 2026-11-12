@@ -1,0 +1,1623 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>馬偕專校 & 導覽島</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js (3D 引擎) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Font Awesome 圖示 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+        
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #E8F3EE;
+            overflow: hidden;
+            margin: 0;
+            user-select: none;
+        }
+
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        .node-label {
+            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s;
+            transform: translate(-50%, -100%);
+            white-space: nowrap;
+        }
+        .node-label:hover {
+            transform: translate(-50%, -115%) scale(1.08);
+            z-index: 30;
+            background: rgba(255, 255, 255, 1);
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.88);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+        }
+
+        .glass-btn {
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(8px);
+            transition: all 0.2s ease;
+        }
+        .glass-btn:hover {
+            background: rgba(255, 255, 255, 1);
+            transform: translateY(-2px);
+        }
+        .glass-btn.active {
+            background: #78350F;
+            color: #FFFFFF;
+        }
+        .glass-btn.active i {
+            color: #FCD34D;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen relative flex flex-col md:flex-row overflow-hidden">
+
+    <!-- 左側/上方 3D 視圖與遊戲區域 -->
+    <div id="game-container" class="relative flex-1 h-[55vh] md:h-full cursor-grab active:cursor-grabbing overflow-hidden touch-none">
+        <!-- 3D Canvas -->
+        <canvas id="three-canvas" class="w-full h-full block"></canvas>
+
+        <!-- 地標標籤 HTML 懸浮容器 -->
+        <div id="labels-container" class="absolute inset-0 pointer-events-none overflow-hidden z-10"></div>
+
+        <!-- 左上標題 LOGO 區塊 -->
+        <div class="absolute top-4 left-4 md:top-6 md:left-6 z-10 flex flex-col pointer-events-none">
+            <div class="flex items-baseline gap-1.5 md:gap-2">
+                <span class="text-3xl md:text-5xl font-black tracking-tight text-red-500 font-serif italic drop-shadow-sm">MacKay</span>
+                <span class="text-3xl md:text-5xl font-black tracking-tight text-amber-900 drop-shadow-sm">CAMPUS.</span>
+            </div>
+            <div class="flex flex-wrap items-center gap-1.5 md:gap-2 mt-1">
+                <span class="bg-amber-900 text-white font-bold px-2 py-0.5 rounded text-xs md:text-sm tracking-wider shadow-sm">馬偕醫護管理專科學校</span>
+                <span class="text-red-600 font-bold text-[10px] md:text-xs tracking-widest uppercase bg-white/70 px-2 py-0.5 rounded-full backdrop-blur-sm">3D 互動校園與學術資源島</span>
+            </div>
+        </div>
+
+        <!-- 頂部控制選單 -->
+        <div class="absolute top-4 right-4 md:top-6 md:right-6 z-10 flex flex-wrap justify-end gap-1.5 md:gap-2 pointer-events-auto max-w-[200px] md:max-w-none">
+            <button id="btn-reset-cam" class="glass-btn px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs font-bold text-gray-700 flex items-center gap-1.5 shadow-sm">
+                <i class="fa-solid fa-up-right-and-down-left-from-center text-amber-600"></i> <span class="hidden sm:inline">全景視角</span>
+            </button>
+            <button id="btn-focus-char" class="glass-btn px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs font-bold text-gray-700 flex items-center gap-1.5 shadow-sm">
+                <i class="fa-solid fa-user text-amber-600"></i> <span class="hidden sm:inline">追蹤角色</span>
+            </button>
+            <button id="btn-toggle-labels" class="glass-btn px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs font-bold text-gray-700 flex items-center gap-1.5 shadow-sm">
+                <i class="fa-solid fa-tags text-amber-600"></i> <span id="label-btn-text" class="hidden sm:inline">隱藏地標</span>
+            </button>
+            <button id="btn-help" class="glass-btn w-8 h-8 rounded-full text-xs font-bold text-gray-700 flex items-center justify-center shadow-sm" title="操作說明">
+                ?
+            </button>
+        </div>
+
+        <!-- 左下控制天氣 UI -->
+        <div class="absolute bottom-4 left-4 md:bottom-6 md:left-6 z-10 glass-panel rounded-full p-1.5 shadow-lg flex items-center gap-1 pointer-events-auto">
+            <button id="btn-weather-sun" class="w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center bg-white shadow text-gray-700 transition" title="晴天"><i class="fa-solid fa-sun text-amber-500"></i></button>
+            <button id="btn-weather-cloud" class="w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center text-gray-600 hover:bg-white/70 transition" title="多雲"><i class="fa-solid fa-cloud-sun text-blue-400"></i></button>
+            <button id="btn-weather-night" class="w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center text-gray-600 hover:bg-white/70 transition" title="夜間"><i class="fa-solid fa-moon text-indigo-500"></i></button>
+        </div>
+
+        <!-- 右下提示小徽章 (桌面版顯示) -->
+        <div class="hidden md:flex absolute bottom-6 right-6 z-10 glass-panel rounded-full px-3.5 py-1.5 shadow-sm items-center gap-2 text-[11px] font-medium text-amber-900/80 pointer-events-none">
+            <i class="fa-solid fa-computer-mouse text-amber-600"></i>
+            <span>左鍵旋轉 • 滾輪縮放 • WASD 移動角色</span>
+        </div>
+    </div>
+
+    <!-- 右側/下方資訊面板 -->
+    <div class="w-full md:w-[380px] md:min-w-[380px] md:max-w-[380px] h-[45vh] md:h-full bg-orange-50/95 backdrop-blur-md border-t md:border-t-0 md:border-l border-amber-900/10 flex flex-col z-20 shadow-2xl relative flex-shrink-0">
+        
+        <!-- 面板頂部標題與分類 Tab -->
+        <div class="p-4 md:p-6 pb-3 md:pb-4 border-b border-amber-900/10 bg-orange-50/80">
+            <div class="flex items-center justify-between">
+                <div>
+                    <div class="text-[10px] md:text-[11px] font-bold tracking-widest text-red-600 uppercase mb-0.5">MACKAY CAMPUS NAVIGATOR</div>
+                    <h1 class="text-lg md:text-2xl font-black text-amber-950 tracking-tight">全校組織與學術導覽</h1>
+                </div>
+            </div>
+            <p class="text-[11px] md:text-xs text-amber-800/80 mt-0.5 font-medium">9 個行政支援單位 / 9 個學術科系與教學中心</p>
+
+            <!-- 搜尋框 -->
+            <div class="relative mt-3">
+                <input type="text" id="search-input" placeholder="搜尋處室、科系、設備、成果..." 
+                       class="w-full bg-white border border-amber-900/15 rounded-xl px-3.5 py-2 text-xs text-amber-950 placeholder-amber-800/40 focus:outline-none focus:ring-2 focus:ring-amber-700/30 shadow-sm">
+                <i class="fa-solid fa-magnifying-glass absolute right-3.5 top-2.5 text-amber-900/40 text-xs"></i>
+            </div>
+
+            <!-- 分頁切換 Tab -->
+            <div class="flex gap-2 mt-3">
+                <button id="tab-admin" class="flex-1 py-2 text-xs font-bold rounded-lg bg-amber-900 text-white shadow-sm transition flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-building"></i> 行政單位 (<span id="admin-count">9</span>)
+                </button>
+                <button id="tab-academic" class="flex-1 py-2 text-xs font-bold rounded-lg bg-white/80 text-amber-900 border border-amber-900/10 hover:bg-white transition flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-graduation-cap"></i> 學術單位 (<span id="academic-count">9</span>)
+                </button>
+            </div>
+        </div>
+
+        <!-- 詳細內容/列表滾動區 -->
+        <div id="panel-content" class="flex-1 overflow-y-auto no-scrollbar p-4 md:p-6 space-y-3 md:space-y-4">
+            <!-- 動態渲染列表 -->
+        </div>
+
+        <!-- 右下腳標資訊 -->
+        <div class="hidden md:flex p-3.5 bg-amber-900/5 border-t border-amber-900/10 justify-between items-center text-[10px] text-amber-900/60 font-medium">
+            <span>MacKay Junior College of Medicine, Nursing and Management</span>
+            <span>2026 © MKC</span>
+        </div>
+    </div>
+
+    <!-- 說明 Modal -->
+    <div id="help-modal" class="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl border border-amber-900/10 transform scale-95 transition-transform duration-300" id="help-modal-box">
+            <h3 class="text-lg font-bold text-amber-950 mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-compass text-amber-600"></i> 3D 導覽島操作說明
+            </h3>
+            <ul class="text-xs text-amber-900/80 space-y-2.5 mb-6 leading-relaxed">
+                <li class="flex items-start gap-2">
+                    <i class="fa-solid fa-hand-pointer text-amber-600 mt-0.5"></i>
+                    <span><b>滑鼠拖曳 / 單指滑動</b>：環繞旋轉 3D 校園島嶼視角</span>
+                </li>
+                <li class="flex items-start gap-2">
+                    <i class="fa-solid fa-magnifying-glass-plus text-amber-600 mt-0.5"></i>
+                    <span><b>滾輪縮放 / 雙指開合</b>：拉近觀察建築細節或拉遠看全貌</span>
+                </li>
+                <li class="flex items-start gap-2">
+                    <i class="fa-solid fa-location-dot text-amber-600 mt-0.5"></i>
+                    <span><b>點擊地圖標籤或右側卡片</b>：鏡頭平滑飛往該島嶼並檢視詳細介紹</span>
+                </li>
+                <li class="flex items-start gap-2">
+                    <i class="fa-solid fa-gamepad text-amber-600 mt-0.5"></i>
+                    <span><b>方向鍵 / WASD</b>：控制校園小角色在島嶼與橋樑間自由漫步</span>
+                </li>
+            </ul>
+            <button id="btn-close-help" class="w-full bg-amber-900 text-white font-bold py-2.5 rounded-xl text-xs hover:bg-amber-800 transition shadow-md">
+                了解，開始探索校園
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // 資料集定義：行政單位 (9) + 學術單位 (9)
+        const campusData = {
+            admin: [
+                {
+                    id: 'a1',
+                    code: '01',
+                    name: '秘書室',
+                    color: '#EF4444',
+                    icon: 'fa-file-signature',
+                    desc: '掌理校務研究(IR)、校務評鑑、內部控制、傑出校友與募款計畫等校務重要業務。',
+                    serviceLinks: [
+                        { name: 'IR研究中心', url: 'https://web.mkc.edu.tw/Site/secretariat?Sn=YWsTfVzMRHJ%2f79QjXkzLMOho6qu8mIeT&%E7%A0%94%E7%A9%B6%E6%88%90%E6%9E%9C' },
+                        { name: '校務評鑑', url: 'https://web.mkc.edu.tw/Site/secretariat?Sn=mvXPWjYdDtvnG7qL1wNJ5w%3d%3d' },
+                        { name: '內部控制', url: 'https://web.mkc.edu.tw/Site/secretariat?Sn=O8CTAMjgInivy%2fXpSU2Sew%3d%3d' },
+                        { name: '傑出校友', url: 'https://web.mkc.edu.tw/Site/secretariat?Sn=UNOuCXHIggZlqLurx%2frDqQ%3d%3d' },
+                        { name: '募款計畫', url: 'https://web.mkc.edu.tw/Site/secretariat?Sn=0CZvR8Zn8OYYsVEmthOz9A%3d%3d' }
+                    ],
+                    pos: { x: -16, z: -6 }
+                },
+                {
+                    id: 'a2',
+                    code: '02',
+                    name: '教務處',
+                    color: '#F97316',
+                    icon: 'fa-book-open',
+                    desc: '統籌教育推展、學生註冊、加退選課務、在職進修及教師教學發展業務。',
+                    serviceLinks: [
+                        { name: '教育推展中心', url: 'https://web.mkc.edu.tw/Site/aca?Sn=O%2fyLHTMIn3bQ9jcq4Jap3GON%2fW%2bdLIGd&%E5%B8%B8%E8%A6%8B%E5%95%8F%E9%A1%8C' },
+                        { name: '學生註冊業務', url: 'https://web.mkc.edu.tw/Site/aca?Sn=idlmC8gKOsbzo9yHCswnSGo7Rpqx3lTFmobJDxJOQT8%3d&%E8%A1%A8%E5%96%AE%E4%B8%8B%E8%BC%89' },
+                        { name: '學生加退選課務', url: 'https://web.mkc.edu.tw/Site/aca?Sn=vhocNWZwIceg0FQEobS8kHVZmC1xEStxdUlywk02Fhg%3d&%E7%9B%B8%E9%97%9C%E6%B3%95%E8%A6%8F' },
+                        { name: '學生在職進修業務', url: 'https://web.mkc.edu.tw/Site/aca?Sn=jMwoouO1UAbeWUIKnGGXV5FhJN0OiAx4gzGmNIy7PiY%3d&%E7%9B%B8%E9%97%9C%E6%B3%95%E8%A6%8F' },
+                        {
+                            name: '教師教學發展業務',
+                            subLinks: [
+                                { name: '教育部高教深耕計畫', url: 'https://web.mkc.edu.tw/Site/aca?Sn=Dbcgg7x8IHwAs6Kw99KaSZK8je8mdWYl&%E9%AB%98%E6%95%99%E6%B7%B1%E8%80%95%E8%A8%88%E7%95%AB' },
+                                { name: '教學實踐研究計畫', url: 'https://web.mkc.edu.tw/Site/aca?Sn=CqL8vMVhUpYOLO%2b%2bMNFiDODWX7Y67JjH&%E6%95%99%E8%82%B2%E9%83%A8%E6%95%99%E5%AD%B8%E5%AF%A6%E8%B8%90%E7%A0%94%E7%A9%B6%E8%A8%88%E7%95%AB' }
+                            ]
+                        }
+                    ],
+                    pos: { x: -7, z: -15 }
+                },
+                {
+                    id: 'a3',
+                    code: '03',
+                    name: '學生事務處',
+                    color: '#F59E0B',
+                    icon: 'fa-users',
+                    desc: '提供學生宿舍、社團、體育、輔導、衛生保健、原民資源、校安、性平及獎助減免等全方位照顧。',
+                    serviceLinks: [
+                        { name: '學生宿舍業務', url: 'https://web.mkc.edu.tw/Site/osa?Sn=W07bwRG7ZFJuMlTupeEfocTwVAv%2b2kCr&%E5%AD%B8%E7%94%9F%E5%AE%BF%E8%88%8D%E5%B0%88%E5%8D%80' },
+                        { name: '學生社團業務', url: 'https://web.mkc.edu.tw/Site/osa?Sn=CoSjk%2b%2biN87U2aAZqhnCNA%3d%3d' },
+                        { name: '學生體育活動', url: 'https://web.mkc.edu.tw/Site/osa?Sn=ifkC2JCxSSXGZ76arJKjjOuPFuHaCH8N&%E9%AB%94%E8%82%B2%E7%AB%B6%E8%B3%BD%E6%B4%BB%E5%8B%95' },
+                        { name: '學生輔導', url: 'https://web.mkc.edu.tw/Site/osa?Sn=57PE5Kg40xInl2aLnypMaw%3d%3d' },
+                        { name: '學生衛生保健', url: 'https://web.mkc.edu.tw/Site/osa?Sn=yaJWEQcM4bwe5n5dMOSmUA%3d%3d' },
+                        { name: '學生原住民資源中心', url: 'https://isrc.mkc.edu.tw/ISRC_FTDK/Index/' },
+                        { name: '學生校安中心', url: 'https://web.mkc.edu.tw/Site/mt?Sn=vGlL25FFlnH1Dxfe3eizKtC%2fFnyh%2bTTQ&%E5%B8%B8%E8%A6%8B%E5%95%8F%E9%A1%8C' },
+                        { name: '學生性平專區', url: 'https://web.mkc.edu.tw/Site/osa?Sn=wfAyGGQb2CHl7UIohdRpnw%3d%3d' },
+                        { name: '學生獎助學金專區', url: 'https://web.mkc.edu.tw/Site/osa?Sn=z1SuSAIK7LjyKguoE%2bQyl3%2bUp608P0jQ&%E7%8D%8E%E5%8A%A9%E5%AD%B8%E9%87%91' },
+                        { name: '學生減免專區', url: 'https://web.mkc.edu.tw/Site/osa?Sn=NGg3CFPluVi4hULyOkU9mQ%3d%3d' },
+                        { name: '弱勢助學專區', url: 'https://web.mkc.edu.tw/Site/osa?Sn=xWxdz9f0YboAMC7RY6wbpGX%2fl0ifyvyB&%E9%AB%98%E6%95%99%E6%B7%B1%E8%80%95%E8%A8%88%E7%95%AB-%E6%8F%90%E5%8D%87%E9%AB%98%E6%95%99%E5%85%AC%E5%85%B1%E6%80%A7%EF%BC%9A%E5%AE%8C%E5%96%84%E5%B0%B1%E5%AD%B8%E5%8D%94%E5%8A%A9%E6%A9%9F%E5%88%B6' },
+                        { name: '學生週報', url: 'https://web.mkc.edu.tw/Site/osa?Sn=IqXHDqxPSnx%2bXG2w3EvMwOnTQpb%2f22L9&%E5%AD%B8%E5%8B%99%E9%80%B1%E5%A0%B1' }
+                    ],
+                    pos: { x: 7, z: -15 }
+                },
+                {
+                    id: 'a4',
+                    code: '04',
+                    name: '總務處',
+                    color: '#10B981',
+                    icon: 'fa-gears',
+                    desc: '掌理校外人士場地租借及學生學雜費繳費等總務行政服務。',
+                    serviceLinks: [
+                        { name: '校外人士場地租借', url: 'https://web.mkc.edu.tw/Site/ga?Sn=2lexTNSu71Xazq9fjcEjKWdH6ybigBgw&%E5%A0%B4%E5%9C%B0%E7%A7%9F%E5%80%9F' },
+                        { name: '學生學雜費繳費', url: 'https://web.mkc.edu.tw/Site/ga?Sn=Jb6iDKAlfFKVSHGtfc6%2fVjFX8mwK6bR0&%E5%AD%B8%E8%B2%BB%E5%85%A5%E5%8F%A3%E7%B6%B2' }
+                    ],
+                    pos: { x: 16, z: -6 }
+                },
+                {
+                    id: 'a5',
+                    code: '05',
+                    name: '圖書資訊中心',
+                    color: '#06B6D4',
+                    icon: 'fa-laptop-code',
+                    desc: '提供全校圖書館館藏資源與校園資訊技術支援服務。',
+                    serviceLinks: [
+                        { name: '圖書館服務', url: 'https://web.mkc.edu.tw/Site/olis?Sn=anz7N79mvBCjpFOwDInkkSAU0KikPEke&%E5%9C%96%E6%9B%B8%E9%A4%A8%E9%A6%96%E9%A0%81' },
+                        { name: '資訊技術服務', url: 'https://web.mkc.edu.tw/Site/olis?Sn=mrtPv8ET3ketmWQlp6WuMQwbs6%2fTXE%2bb&%E5%B7%A5%E4%BD%9C%E8%81%B7%E6%8E%8C' }
+                    ],
+                    pos: { x: 16, z: 6 }
+                },
+                {
+                    id: 'a6',
+                    code: '06',
+                    name: '技術合作處',
+                    color: '#3B82F6',
+                    icon: 'fa-handshake',
+                    desc: '推動產學研發合作與教師產業連結申請業務。',
+                    serviceLinks: [
+                        { name: '教師產業連結申請', url: 'https://web.mkc.edu.tw/Site/otdil/' }
+                    ],
+                    pos: { x: 7, z: 15 }
+                },
+                {
+                    id: 'a7',
+                    code: '07',
+                    name: '人事室',
+                    color: '#6366F1',
+                    icon: 'fa-id-card',
+                    desc: '辦理教職員人事行政與教職員福利辦法相關業務。',
+                    serviceLinks: [
+                        { name: '教職員福利辦法', url: 'https://web.mkc.edu.tw/Site/personnel?Sn=Q4doK1mzfjgreitAH%2fjZtteAXiuXtpbL&%E7%9B%B8%E9%97%9C%E6%B3%95%E8%A6%8F' }
+                    ],
+                    pos: { x: -7, z: 15 }
+                },
+                {
+                    id: 'a8',
+                    code: '08',
+                    name: '會計室',
+                    color: '#8B5CF6',
+                    icon: 'fa-calculator',
+                    desc: '掌理全校預決算及經費支用相關規定之審核與管理。',
+                    serviceLinks: [
+                        { name: '經費支用相關規定', url: 'https://web.mkc.edu.tw/Site/accounting?Sn=p5Gp0UmIxumIZbi8khjVQ1Vp2h9NaWwW&%E6%B3%95%E4%BB%A4%E8%A6%8F%E7%AB%A0' }
+                    ],
+                    pos: { x: -16, z: 6 }
+                },
+                {
+                    id: 'a9',
+                    code: '09',
+                    name: '校牧室',
+                    color: '#EC4899',
+                    icon: 'fa-cross',
+                    desc: '籌辦學生羽翼團契、教職聚會、大型典禮、學生關懷及敬拜禱告活動。',
+                    serviceLinks: [
+                        { name: '學生羽翼團契聚會活動', url: 'https://web.mkc.edu.tw/Site/chaplain?Sn=1AtBdSCX8KSCJ7A7A%2b0Tk1O8D%2bV8nC7A&%E7%BE%BD%E7%BF%BC%E5%9C%98%E5%A5%91%E8%81%9A%E6%9C%83%E5%BF%AB%E8%A8%8A' },
+                        { name: '教職聚會活動', url: 'https://web.mkc.edu.tw/Site/chaplain?Sn=lx6ZUzmq1%2fOtOgxdNTUc7WCwWla6w%2f6Q&%E6%95%99%E8%81%B7%E5%93%A1%E5%B7%A5%E8%81%9A%E6%9C%83%E5%BF%AB%E8%A8%8A' },
+                        { name: '大型典禮活動', url: 'https://web.mkc.edu.tw/Site/chaplain?Sn=79eegK%2bWiUMa%2fTNQ8qQ0jAGnBWDOPJpI&%E6%AD%A1%E6%85%B6%E4%BD%B3%E7%AF%80%E5%85%B1%E4%BA%AB%E4%B8%BB%E6%81%A9' },
+                        { name: '學生關懷', url: 'https://web.mkc.edu.tw/Site/chaplain?Sn=QGzbZQMvHxow3p2Gx%2fR00H9HutyZGl0e&%E9%97%9C%E6%87%B7%E9%99%AA%E4%BC%B4%E6%84%9B%E4%B8%AD%E5%90%8C%E8%A1%8C' },
+                        { name: '學生敬拜禱告活動', url: 'https://web.mkc.edu.tw/Site/chaplain?Sn=aX3%2fKWGXXugVNM14GC37rZkz27Yax3TJ&%E6%95%AC%E6%8B%9C%E7%A6%B1%E5%91%8A%E9%9D%88%E5%91%BD%E6%9B%B4%E6%96%B0' }
+                    ],
+                    pos: { x: 0, z: -22 }
+                }
+            ],
+            academic: [
+                { 
+                    id: 'c1', 
+                    code: '01', 
+                    name: '護理科', 
+                    color: '#E11D48', 
+                    campuses: [
+                        { name: '三芝校區', grades: '一、二、三年級' },
+                        { name: '關渡校區', grades: '四、五年級' }
+                    ],
+                    equipmentLinks: [
+                        { name: '基本護理學示教室及回示教室', url: 'https://web.mkc.edu.tw/Site/nurse?Sn=2Te0E3KhCQzK5R87lfd%2fj7VK5%2fgeRSfV&%E5%A0%B4%E5%9C%B0%E8%A8%AD%E6%96%BD' },
+                        { name: '內外護理學示教室及回示教室', url: 'https://web.mkc.edu.tw/Site/nurse?Sn=mjV6L367p%2fMLDEGL5NscfUVUKQ9cUx%2bC&%E5%85%A7%E5%A4%96%E8%AD%B7%E7%90%86%E5%AD%B8%E7%A4%BA%E6%95%99%E5%AE%A4%E5%8F%8A%E5%9B%9E%E7%A4%BA%E6%95%99%E5%AE%A4' },
+                        { name: '婦嬰健康促進中心', url: 'https://web.mkc.edu.tw/Site/nurse?Sn=IISBy8Vo4f0RkHM4Dz0EVApEtElYd8zb&%E5%A9%A6%E5%AC%B0%E5%81%A5%E5%BA%B7%E4%BF%83%E9%80%B2%E4%B8%AD%E5%BF%83' },
+                        { name: '高齡者健康促進中心', url: 'https://web.mkc.edu.tw/Site/nurse?Sn=na2H51g6ZckDLoAK25Vrf9zHJl%2fFcSr%2f&%E9%AB%98%E9%BD%A1%E8%80%85%E5%81%A5%E5%BA%B7%E4%BF%83%E9%80%B2%E4%B8%AD%E5%BF%83' },
+                        { name: '臨床技能檢測中心', url: 'https://web.mkc.edu.tw/Site/nurse?Sn=UE1490hxuKql3q6ApQgiYJgps6VzMq0h&%E8%87%A8%E5%BA%8A%E6%8A%80%E8%83%BD%E6%AA%A2%E6%B8%AC%E4%B8%AD%E5%BF%83' },
+                        { name: '解剖生理實驗室', url: 'https://web.mkc.edu.tw/Site/nurse?Sn=h0kzl9462WZBXrQr2oLdU63my4kNeu%2fX&%E5%A0%B4%E5%9C%B0%E8%A8%AD%E6%96%BD' },
+                        { name: '微生物實驗室', url: 'https://web.mkc.edu.tw/Site/nurse?Sn=H%2fZ2vMnniSZE7QDyI%2b9m9eJqcJuWyw7S&%E5%A0%B4%E5%9C%B0%E8%A8%AD%E6%96%BD' }
+                    ], 
+                    resultsLinks: [
+                        { name: '國際海外選習', url: 'https://web.mkc.edu.tw/Site/nurse?Sn=cGP%2bOGir0qxp7N39P6Dm8AV4BRoYKJDO&%E6%B5%B7%E5%A4%96%E9%81%B8%E7%BF%92/2023%E5%B9%B4/%E6%97%A5%E6%9C%AC/%E9%9D%92%E6%A3%AE%E4%B8%AD%E5%A4%AE%E5%AD%B8%E9%99%A2%E5%A4%A7%E5%AD%B8' },
+                        { name: '醫院實習', url: 'https://web.mkc.edu.tw/Site/nurse?Sn=MBHiytlqYU%2fRcBhMM9mW3hjYrGZRd00%2ff8L3xHzbeAM%3d&%E5%AF%A6%E7%BF%92%E9%AB%94%E6%AA%A2%E8%A6%8F%E5%AE%9A//web.mkc.edu.tw/Site/nurse?Sn=MBHiytlqYU%2fRcBhMM9mW3hjYrGZRd00%2ff8L3xHzbeAM%3d&%E5%AF%A6%E7%BF%92%E9%AB%94%E6%AA%A2%E8%A6%8F%E5%AE%9A' },
+                        { name: '競賽成果', url: 'https://web.mkc.edu.tw/Site/nurse?Sn=IuG48ymoZKg1jhOmUO6Z8bnDKSUI0EVY&%E5%AD%B8%E7%94%9F%E6%A6%AE%E8%AD%BD%E6%A6%9C' }
+                    ], 
+                    desc: '培育臨床專業護理人才，結合三芝與關渡雙校區完善實習示教室與臨床技能中心。', 
+                    pos: { x: -34, z: -18 } 
+                },
+                { 
+                    id: 'c2', 
+                    code: '02', 
+                    name: '幼兒保育科', 
+                    color: '#D97706', 
+                    campuses: [
+                        { name: '三芝校區', grades: '一至五年級' }
+                    ],
+                    equipmentLinks: [
+                        { name: '藝術教室', url: 'https://web.mkc.edu.tw/Site/child?Sn=eD%2fc25dLZYDgC5ZdrLZt16sqZ85FYWh5&%E8%97%9D%E8%A1%93%E6%95%99%E5%AE%A4' },
+                        { name: '音樂/室內體能教室', url: 'https://web.mkc.edu.tw/Site/child?Sn=jcbX8sCqOV%2fImx4jE1AWlTJf%2b2sTC9IL&%E9%9F%B3%E6%A8%82/%E5%AE%A4%E5%85%A7%E9%AB%94%E8%83%BD%E6%95%99%E5%AE%A4' },
+                        { name: '自學教室', url: 'https://web.mkc.edu.tw/Site/child?Sn=sOAXr7FtLHfEZWaSXz1zgQqK6Z7j1g5b&%E8%87%AA%E5%AD%B8%E6%95%99%E5%AE%A4' },
+                        { name: '嬰幼兒照護教室', url: 'https://web.mkc.edu.tw/Site/child?Sn=HukpB8dfWsehM2TpJPHPu4n2z0iX4DBc&%E5%AC%B0%E5%B9%BC%E5%85%92%E7%85%A7%E8%AD%B7%E6%95%99%E5%AE%A4' },
+                        { name: '兒童劇場', url: 'https://web.mkc.edu.tw/Site/child?Sn=gnZuYacuam92zwvZhbjRS57xAmFCsuLT&%E5%85%92%E7%AB%A5%E5%8A%87%E5%A0%B4' },
+                        { name: '琴房', url: 'https://web.mkc.edu.tw/Site/child?Sn=izihHO6MEzbkwT8l5NniizlzfBFUNf4i&%E7%90%B4%E6%88%BF' },
+                        { name: '蒙特梭利教室', url: 'https://web.mkc.edu.tw/Site/child?Sn=vi4UZlT1CJBbxUvbAeo59QZPhixq9qzu&%E8%92%99%E7%89%B9%E6%A2%AD%E5%88%A9%E6%95%99%E5%AE%A4' },
+                        { name: '觀察室', url: 'https://web.mkc.edu.tw/Site/child?Sn=sN1rbDNoxKUbRg9SvirCUnMDTQsVmeJA&%E8%A7%80%E5%AF%9F%E5%AE%A4' }
+                    ], 
+                    resultsLinks: [
+                        { name: '競賽成果', url: 'https://web.mkc.edu.tw/Site/child?Sn=ralHVTBxAr7tK4KUEHuLC56ZBMCMP9bd&%E5%B8%AB%E7%94%9F%E6%A6%AE%E8%AD%BD%E6%9D%BF' },
+                        { name: '產業實習', url: 'https://web.mkc.edu.tw/Site/child?Sn=jMjARIMtRUKk58PO0YGe7TCiIYng0cfL&%E5%AF%A6%E7%BF%92%E8%AA%B2%E7%A8%8B%E8%A6%8F%E5%8A%83%E8%88%87%E6%A9%9F%E5%88%B6' },
+                        { name: '證照成效', url: 'https://certificate.mkc.edu.tw/MARS_Cert/Statistics_Dept3.aspx?SysDLL=FOT&SysPJT=Cert&SysNS=CTL' }
+                    ], 
+                    desc: '提供幼兒托育與早期教育專業訓練，具備蒙特梭利教室、兒童劇場與完整實務空間。', 
+                    pos: { x: 0, z: -38 } 
+                },
+                { 
+                    id: 'c3', 
+                    code: '03', 
+                    name: '餐飲管理科', 
+                    color: '#059669', 
+                    campuses: [
+                        { name: '關渡校區', grades: '一至五年級' }
+                    ],
+                    equipmentLinks: [
+                        { name: '中餐實習教室', url: 'https://web.mkc.edu.tw/Site/ckvs?Sn=R6b9kfomRBggR0EDWOwTh%2bXxTJo%2bYBsi&%E4%B8%AD%E9%A4%90%E5%AF%A6%E7%BF%92%E6%95%99%E5%AE%A4' },
+                        { name: '西餐實習教室', url: 'https://web.mkc.edu.tw/Site/ckvs?Sn=fFYhU60p3BizNvQWtWmB5lU8F4u5hUKt&%E8%A5%BF%E9%A4%90%E5%AF%A6%E7%BF%92%E6%95%99%E5%AE%A4' },
+                        { name: '示範教室', url: 'https://web.mkc.edu.tw/Site/ckvs?Sn=t6tYkdH0THhTjtduyXWVL3vVwYH1dvp1&%E7%A4%BA%E7%AF%84%E6%95%99%E5%AE%A4' },
+                        { name: '飲料調製實習教室', url: 'https://web.mkc.edu.tw/Site/ckvs?Sn=ygQQ3hQcPAL2Bs%2fO2FA5M95e2XQLE0yk&%E9%A3%B2%E6%96%99%E8%AA%BF%E8%A3%BD%E5%AF%A6%E7%BF%92%E6%95%99%E5%AE%A4' },
+                        { name: '烘焙實習教室', url: 'https://web.mkc.edu.tw/Site/ckvs?Sn=NJPuCngPmevJuznEoVddZwW2i7WQdylF&%E7%83%98%E7%84%99%E5%AF%A6%E7%BF%92%E6%95%99%E5%AE%A4' },
+                        { name: '餐飲服務實習教室', url: 'https://web.mkc.edu.tw/Site/ckvs?Sn=o0rUiuwwtSzVYaX9Dx9rrr4H7DzFb3GE&%E9%A4%90%E9%A3%B2%E6%9C%8D%E5%8B%99%E5%AF%A6%E7%BF%92%E6%95%99%E5%AE%A4' }
+                    ], 
+                    resultsLinks: [
+                        { name: '競賽成果', url: 'https://web.mkc.edu.tw/Site/ckvs?Sn=ZkpJRN9hpt9sLE3vhe55bxlcqEZr%2fd3G&%E6%A6%AE%E8%AD%BD%E6%A6%9C' },
+                        { name: '國際交流', url: 'https://www.facebook.com/people/%E9%A6%AC%E5%81%95%E9%86%AB%E8%AD%B7%E7%AE%A1%E7%90%86%E5%B0%88%E7%A7%91%E5%AD%B8%E6%A0%A1-%E9%A4%90%E9%A3%B2%E7%AE%A1%E7%90%86%E7%A7%91/100064024455509/' },
+                        { name: '勞動部證照', url: 'https://certificate.mkc.edu.tw/MARS_Cert/Statistics_Dept4.aspx?SysDLL=FOT&SysPJT=Cert&SysNS=CTL&AMID=500&AMCLASS=502&DGID=423fdca9-311e-4c63-8966-d4a4b4623563&DPID=13&CertType=32j35m65p64i32l35o35h64k3m039g38j65m62p38i39l34o31h37k37n36g68j64m32p65i34l39o31h64k37n61g31j' },
+                        { name: '產業實習', url: 'https://web.mkc.edu.tw/Site/ckvs?Sn=KWLxYuHKsUdbMYOfOdTQSFtOWRdcBiPB&%E5%AF%A6%E7%BF%92%E8%A6%8F%E5%8A%83' }
+                    ], 
+                    desc: '具備專業中西餐、烘焙、飲調與餐服實習教室，培養學生餐飲製備與職業證照能力。', 
+                    pos: { x: 34, z: -18 } 
+                },
+                { 
+                    id: 'c4', 
+                    code: '04', 
+                    name: '化妝品應用與管理科', 
+                    color: '#7C3AED', 
+                    campuses: [
+                        { name: '關渡校區', grades: '一至五年級' }
+                    ],
+                    equipmentLinks: [
+                        { name: '美髮設計多功能專業教室/美容護膚多功能專業教室/整體造型多功能專業教室/化妝品調製與檢驗分析實驗室', url: 'https://web.mkc.edu.tw/Site/cosmetic?Sn=oCaN1wS9yimJAa0FTDC3SOtUT5efiC0V&%E6%95%99%E5%AD%B8%E8%A8%AD%E6%96%BD' }
+                    ], 
+                    resultsLinks: [
+                        { name: '競賽成果', url: 'https://web.mkc.edu.tw/Site/cosmetic?Sn=TDq%2fExqC%2bP0PDCOxolM8YafWd8Yd615n&%E5%B8%AB%E7%94%9F%E6%A6%AE%E8%AD%BD' },
+                        { name: '勞動部證照', url: 'https://certificate.mkc.edu.tw/MARS_Cert/Statistics_Dept3.aspx?SysDLL=FOT&SysPJT=Cert&SysNS=CTL&AMID=500&AMCLASS=502&DGID=dc59c779-89d1-47fe-bec3-f42001aa2784&DPID=3' }
+                    ], 
+                    desc: '培育化妝品配方調製與檢驗分析、時尚彩妝整體造型與美容美髮專業人才。', 
+                    pos: { x: 36, z: 16 } 
+                },
+                { 
+                    id: 'c5', 
+                    code: '05', 
+                    name: '視光學科', 
+                    color: '#0284C7', 
+                    campuses: [
+                        { name: '關渡校區', grades: '一至五年級' }
+                    ],
+                    equipmentLinks: [
+                        { name: '配鏡實驗室1/配鏡實驗室2 (2間)', url: 'https://web.mkc.edu.tw/Site/optometry?Sn=fLjZ56kYFp2%2f%2bAiNhvRZKifMxWhfgnlq&%E6%95%99%E5%AD%B8%E8%A8%AD%E6%96%BD' }
+                    ], 
+                    resultsLinks: [
+                        { name: '競賽成果', url: 'https://www.facebook.com/mkcopt#' },
+                        { name: '勞動部證照', url: 'https://certificate.mkc.edu.tw/MARS_Cert/Statistics_Dept3.aspx?SysDLL=FOT&SysPJT=Cert&SysNS=CTL&AMID=500&AMCLASS=502&DGID=34d988fd-58ac-414c-b87a-ce71a06a1538&DPID=4' }
+                    ], 
+                    desc: '配置專業配鏡實驗室與先進視光儀器，培育驗光師與驗光生專業人才。', 
+                    pos: { x: 16, z: 36 } 
+                },
+                { 
+                    id: 'c6', 
+                    code: '06', 
+                    name: '生命關懷事業科', 
+                    color: '#DB2777', 
+                    equipmentLinks: [
+                        { name: '技術教室', url: 'https://web.mkc.edu.tw/Site/lifecaring?Sn=u02NegG9C%2bcvqMro4iz9JSAygyJglitZ&%E6%95%99%E5%AD%B8%E8%A8%AD%E6%96%BD' }
+                    ], 
+                    resultsLinks: [
+                        { name: '競賽成果', url: 'https://web.mkc.edu.tw/Site/lifecaring?Sn=Aarv0Osu0K22BK6BKsRne%2fTEFUNRfuvw1zkC9gX8DQc%3d&%E5%9C%A8%E6%A0%A1%E7%94%9F%E6%A6%AE%E8%AD%BD%E6%A6%9C' },
+                        { name: '勞動部證照', url: 'https://certificate.mkc.edu.tw/MARS_Cert/Statistics_Dept3.aspx?SysDLL=FOT&SysPJT=Cert&SysNS=CTL&AMID=500&AMCLASS=502&DGID=358581fd-fc29-43ef-bcec-c8efe0ef96b9&DPID=22' }
+                    ], 
+                    desc: '配有專業生命關懷技術教室，專責生命禮儀服務與殯葬實務訓練。', 
+                    pos: { x: -16, z: 36 } 
+                },
+                { 
+                    id: 'c7', 
+                    code: '07', 
+                    name: '人工智慧暨醫療應用科', 
+                    color: '#2563EB', 
+                    equipmentLinks: [
+                        { name: '智慧醫療綜合實驗室', url: 'https://aima.mkc.edu.tw/front/Classroom/Lab/pages.php?ID=5a4326493836406d4c7753254864596834cfc68ec6d3f8e29d6800ba161fedb5c0cf6f7fc13d0b346e23be' },
+                        { name: '智慧聯網數據實驗室', url: 'https://aima.mkc.edu.tw/front/Classroom/Classroom2/pages.php?ID=5a4326493836406d4c77532548645968e5dbc01e9a7124d343ea1fbff26e47d4c0cf6f7fc13d0b34612ebd073fb0c3f15882' },
+                        { name: '智慧醫療應用實驗室', url: 'https://aima.mkc.edu.tw/front/Classroom/Classroom3/pages.php?ID=5a4326493836406d4c7753254864596847e6be643fe361ecb4419980386edf44c0cf6f7fc13d0b34612ebd073fb0c3f15883' },
+                        { name: '創意發想室', url: 'https://aima.mkc.edu.tw/front/Classroom/Classroom4/pages.php?ID=5a4326493836406d4c77532548645968ad54c501471cba5372130b3f4e6d14b6c0cf6f7fc13d0b34612ebd073fb0c3f15884' }
+                    ], 
+                    resultsLinks: [
+                        { name: '競賽成果', url: 'https://aima.mkc.edu.tw/front/Honor_Roll/news.php?ID=5a4326493836406d4c7753254864596816d6edb42e334d1f7e6372be292251e7c0cf6f7fc13d0b346a2db21b3e9dfef159dc' },
+                        { name: '資訊技能', url: 'https://certificate.mkc.edu.tw/MARS_Cert/Statistics_Dept3.aspx?SysDLL=FOT&SysPJT=Cert&SysNS=CTL&AMID=500&AMCLASS=502&DGID=f3fa7a7a-2368-41e2-9af9-da38c149e72a&DPID=34' }
+                    ], 
+                    desc: '聚焦智慧醫療與人工智慧物聯網應用開發，具備多元智慧醫療實驗室與創意發想空間。', 
+                    pos: { x: -36, z: 16 } 
+                },
+                { 
+                    id: 'c8', 
+                    code: '08', 
+                    name: '智慧科技長期照顧科', 
+                    color: '#0D9488', 
+                    equipmentLinks: [
+                        { name: '照顧技術示範教室/智慧長照中心/綜合討論室', url: 'https://sites.google.com/view/mck-itltc/%E5%B0%88%E6%A5%AD%E6%95%99%E5%AE%A4' }
+                    ], 
+                    resultsLinks: [
+                        { name: 'USR HUB', url: 'https://sites.google.com/view/mkc-usr-hub/%E6%B4%BB%E5%8B%95%E7%B4%80%E9%8C%84' }
+                    ], 
+                    desc: '結合智慧科技與長期照顧專業，設有照顧技術示範教室與智慧長照中心並積極推動 USR HUB。', 
+                    pos: { x: -24, z: -36 } 
+                },
+                { 
+                    id: 'c9', 
+                    code: '09', 
+                    name: '跨領域教育中心', 
+                    color: '#4F46E5', 
+                    equipmentLinks: [
+                        { name: '電腦教室/體適能教室/舞蹈教室', url: 'https://web.mkc.edu.tw/Site/cge?Sn=ef7qsqN5R%2bIpvC7UMqqZDWk99nXk3Nbt&%E6%95%99%E5%AD%B8%E8%A8%AD%E6%96%BD' }
+                    ], 
+                    resultsLabel: '活動成果',
+                    resultsLinks: [
+                        { name: '教師研習', url: 'https://web.mkc.edu.tw/Site/cge?Sn=XNZiMf7wSBusRuJcg3rEdHrNQlwl2hOj&%E6%B4%BB%E5%8B%95%E5%89%AA%E5%BD%B1' },
+                        { name: '課程規劃', url: 'https://web.mkc.edu.tw/Site/cge?Sn=qGD29N9qqt%2bLw1Y8aM%2fSTuNY15Wvao10&%E8%AA%B2%E7%A8%8B%E4%BB%8B%E7%B4%B9' }
+                    ], 
+                    desc: '規劃跨領域通識課程與教師研習，並管理電腦教室、體適能教室及舞蹈教室等教學設施。', 
+                    pos: { x: 24, z: -36 } 
+                }
+            ]
+        };
+
+        // 全局狀態變數
+        let scene, camera, renderer, dirLight, ambientLight;
+        let activeTab = 'admin';
+        let showLabels = true;
+        let selectedNodeId = null;
+        let landmarkNodes = [];
+        let clouds = [];
+        let floatingIslands = [];
+        let levitationCrystals = [];
+        let birds = [];
+        let playerMesh;
+        let keyState = {};
+        let isFollowingPlayer = false;
+
+        // 相機軌道控制狀態 (支持滑鼠拖曳、滾輪縮放、平滑過渡)
+        const camControl = {
+            target: new THREE.Vector3(0, 0, 0),
+            desiredTarget: new THREE.Vector3(0, 0, 0),
+            spherical: new THREE.Spherical(102, 0.85, 0), // radius, phi (垂直角), theta (水平角)
+            desiredSpherical: new THREE.Spherical(102, 0.85, 0),
+            isDragging: false,
+            prevMouse: { x: 0, y: 0 },
+            prevPinchDist: 0
+        };
+
+        // 初始化
+        window.addEventListener('load', () => {
+            init3D();
+            setupCameraControls();
+            setupEvents();
+            renderPanelList();
+            animate();
+        });
+
+        // 3D 場景初始化 (宮崎駿天空之城日系奇幻風)
+        function init3D() {
+            const container = document.getElementById('game-container');
+            const canvas = document.getElementById('three-canvas');
+
+            // Scene - 宮崎駿晴朗天藍與遠方雲霧
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x7CC5E8);
+            scene.fog = new THREE.FogExp2(0xBCE3F5, 0.0042);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+            updateCameraFromSpherical();
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            // Lights - 溫暖金陽與天空半球反射光
+            const hemiLight = new THREE.HemisphereLight(0xDFF4FF, 0x6B8E55, 0.55);
+            scene.add(hemiLight);
+
+            ambientLight = new THREE.AmbientLight(0xFFF9EC, 0.45);
+            scene.add(ambientLight);
+
+            dirLight = new THREE.DirectionalLight(0xFFF1D0, 1.05);
+            dirLight.position.set(50, 95, 55);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.near = 10;
+            dirLight.shadow.camera.far = 220;
+            const d = 60;
+            dirLight.shadow.camera.left = -d;
+            dirLight.shadow.camera.right = d;
+            dirLight.shadow.camera.top = d;
+            dirLight.shadow.camera.bottom = -d;
+            scene.add(dirLight);
+
+            // 天空之城下方無垠雲海底圖 (取代原本海面)
+            createCloudSea();
+
+            // 建立 3D 浮空群島與古文明建築
+            createIslands();
+            createClouds();
+            createBirds();
+
+            // 建立小角色
+            createPlayer();
+
+            // 調整視窗大小自適應
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        // 建立腳下壯闊的雲海與遙遠浮空小岩島
+        function createCloudSea() {
+            const seaGroup = new THREE.Group();
+
+            // 深處大氣雲層底板
+            const baseGeo = new THREE.PlaneGeometry(600, 600);
+            const baseMat = new THREE.MeshLambertMaterial({ color: 0xD8EFFA });
+            const base = new THREE.Mesh(baseGeo, baseMat);
+            base.rotation.x = -Math.PI / 2;
+            base.position.y = -24;
+            seaGroup.add(base);
+
+            // 層層堆疊的蓬鬆白雲海浪
+            const cloudSeaMat = new THREE.MeshLambertMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0.92 });
+            const shadowCloudMat = new THREE.MeshLambertMaterial({ color: 0xCCE5F5, transparent: true, opacity: 0.85 });
+
+            for (let i = 0; i < 95; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 15 + Math.random() * 145;
+                const radius = 5 + Math.random() * 11;
+                const geo = new THREE.DodecahedronGeometry(radius, 1);
+                const mat = i % 3 === 0 ? shadowCloudMat : cloudSeaMat;
+                const puff = new THREE.Mesh(geo, mat);
+                puff.scale.set(1.5, 0.42, 1.5);
+                puff.position.set(
+                    Math.cos(angle) * dist,
+                    -16 - Math.random() * 6,
+                    Math.sin(angle) * dist
+                );
+                puff.rotation.y = Math.random() * Math.PI;
+                seaGroup.add(puff);
+            }
+
+            // 遠景背景漂浮小岩島 (營造天空之城遼闊世界觀)
+            const rockMat = new THREE.MeshLambertMaterial({ color: 0x6D635B, flatShading: true });
+            const grassMat = new THREE.MeshLambertMaterial({ color: 0x6DA34D, flatShading: true });
+            for (let i = 0; i < 8; i++) {
+                const bgIsland = new THREE.Group();
+                const angle = (Math.PI * 2 / 8) * i + 0.35;
+                const dist = 85 + (i % 3) * 18;
+                const r = 3 + (i % 3) * 1.6;
+
+                const cone = new THREE.Mesh(new THREE.ConeGeometry(r, r * 2.2, 6), rockMat);
+                cone.rotation.x = Math.PI;
+                cone.position.y = -r * 1.1;
+                bgIsland.add(cone);
+
+                const cap = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.95, r, 0.8, 6), grassMat);
+                cap.position.y = 0.2;
+                bgIsland.add(cap);
+
+                bgIsland.position.set(Math.cos(angle) * dist, -4 + (i % 4) * 4, Math.sin(angle) * dist);
+                scene.add(bgIsland);
+                floatingIslands.push({ mesh: bgIsland, baseY: bgIsland.position.y, phase: i * 1.1 });
+            }
+
+            scene.add(seaGroup);
+        }
+
+        // 建立日系手繪感蓬鬆積雨雲
+        function createClouds() {
+            const cloudMat = new THREE.MeshLambertMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0.94 });
+            const underMat = new THREE.MeshLambertMaterial({ color: 0xD7ECFA, transparent: true, opacity: 0.9 });
+
+            for (let i = 0; i < 16; i++) {
+                const cloudGroup = new THREE.Group();
+                const puffs = 4 + Math.floor(Math.random() * 3);
+                for (let j = 0; j < puffs; j++) {
+                    const size = 1.8 + Math.random() * 1.8;
+                    const geo = new THREE.DodecahedronGeometry(size, 1);
+                    const mesh = new THREE.Mesh(geo, j === 0 ? underMat : cloudMat);
+                    mesh.scale.set(1.2, 0.75, 1.1);
+                    mesh.position.set((j - puffs / 2) * 2.1, Math.random() * 0.9, (Math.random() - 0.5) * 1.8);
+                    cloudGroup.add(mesh);
+                }
+                cloudGroup.position.set(
+                    (Math.random() - 0.5) * 160,
+                    24 + Math.random() * 14,
+                    (Math.random() - 0.5) * 160
+                );
+                scene.add(cloudGroup);
+                clouds.push({ mesh: cloudGroup, speed: 0.015 + Math.random() * 0.025 });
+            }
+        }
+
+        // 建立空中盤旋的白鳥群 (吉卜力經典意象)
+        function createBirds() {
+            const wingMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF, side: THREE.DoubleSide });
+            for (let i = 0; i < 10; i++) {
+                const birdGroup = new THREE.Group();
+                const leftWing = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.2), wingMat);
+                leftWing.position.x = -0.3;
+                const rightWing = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.2), wingMat);
+                rightWing.position.x = 0.3;
+                birdGroup.add(leftWing, rightWing);
+
+                const radius = 25 + Math.random() * 35;
+                const angle = Math.random() * Math.PI * 2;
+                const height = 14 + Math.random() * 10;
+                birdGroup.position.set(Math.cos(angle) * radius, height, Math.sin(angle) * radius);
+                scene.add(birdGroup);
+
+                birds.push({
+                    group: birdGroup,
+                    leftWing,
+                    rightWing,
+                    radius,
+                    angle,
+                    height,
+                    speed: 0.004 + Math.random() * 0.003,
+                    flapOffset: Math.random() * Math.PI * 2
+                });
+            }
+        }
+
+        // 創建浮空島嶼群（天空之城石砌平台＋倒錐岩底＋飛行石核心）
+        function createIslands() {
+            landmarkNodes = [];
+
+            // 0. 中央拉普達天空之城核心中樞島
+            const hubIsland = createHexIsland(0, 0, 6.8, 0x9C9283, '校園核心樞紐', true);
+            scene.add(hubIsland);
+
+            // 中央天空之城拉普達古老石塔與巨大飛行石結晶
+            const towerGroup = new THREE.Group();
+
+            // 苔蘚古老石基座
+            const basePedestal = new THREE.Mesh(
+                new THREE.CylinderGeometry(2.6, 3.1, 1.2, 8),
+                new THREE.MeshStandardMaterial({ color: 0x8C8275, roughness: 0.85, flatShading: true })
+            );
+            basePedestal.position.y = 0.6;
+            basePedestal.castShadow = true;
+            basePedestal.receiveShadow = true;
+            towerGroup.add(basePedestal);
+
+            // 中層石砌神殿柱體
+            const pillar = new THREE.Mesh(
+                new THREE.CylinderGeometry(1.6, 2.1, 4.2, 8),
+                new THREE.MeshStandardMaterial({ color: 0xA89F91, roughness: 0.8, flatShading: true })
+            );
+            pillar.position.y = 3.2;
+            pillar.castShadow = true;
+            towerGroup.add(pillar);
+
+            // 古老石環與金色日系紋飾圈
+            const ring = new THREE.Mesh(
+                new THREE.TorusGeometry(1.9, 0.16, 8, 16),
+                new THREE.MeshStandardMaterial({ color: 0xD4A359, roughness: 0.4, metalness: 0.3 })
+            );
+            ring.rotation.x = Math.PI / 2;
+            ring.position.y = 4.6;
+            towerGroup.add(ring);
+
+            // 穹頂石冠
+            const spire = new THREE.Mesh(
+                new THREE.ConeGeometry(2.1, 2.2, 8),
+                new THREE.MeshStandardMaterial({ color: 0x5B7A4B, roughness: 0.85, flatShading: true })
+            );
+            spire.position.y = 6.3;
+            spire.castShadow = true;
+            towerGroup.add(spire);
+
+            // 頂端懸浮發光藍綠「飛行石」結晶
+            const crystalMat = new THREE.MeshStandardMaterial({
+                color: 0x38BDF8,
+                emissive: 0x0284C7,
+                emissiveIntensity: 0.7,
+                roughness: 0.15
+            });
+            const topCrystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.85, 0), crystalMat);
+            topCrystal.position.y = 8.4;
+            towerGroup.add(topCrystal);
+            levitationCrystals.push({ mesh: topCrystal, baseY: 8.4, speed: 0.003 });
+
+            scene.add(towerGroup);
+
+            // 1. 獨立行政浮空島嶼
+            campusData.admin.forEach(item => {
+                const island = createHexIsland(item.pos.x, item.pos.z, 5.5, 0x9C9283, item.name, false, 'admin');
+                scene.add(island);
+                createBridge(0, 0, item.pos.x, item.pos.z);
+
+                const node = createBuildingNode(item.pos.x, 0, item.pos.z, item, 'admin');
+                scene.add(node);
+                landmarkNodes.push({ data: item, mesh: node, type: 'admin' });
+            });
+
+            // 2. 獨立學術浮空島嶼
+            campusData.academic.forEach(item => {
+                const island = createHexIsland(item.pos.x, item.pos.z, 8.5, 0x8F8577, item.name, false, 'academic');
+                scene.add(island);
+                createBridge(0, 0, item.pos.x, item.pos.z);
+
+                const node = createBuildingNode(item.pos.x, 0, item.pos.z, item, 'academic');
+                scene.add(node);
+                landmarkNodes.push({ data: item, mesh: node, type: 'academic' });
+            });
+
+            rebuildLandmarkLabels();
+        }
+
+        // 建立宮崎駿天空之城浮空岩島（石砌邊緣＋茵綠草坪＋倒錐懸浮岩底＋底部飛行石＋垂吊藤蔓）
+        function createHexIsland(x, z, radius, stoneColorHex, name, isHub = false, category = 'admin') {
+            const group = new THREE.Group();
+            group.position.set(x, 0, z);
+
+            const shape = new THREE.Shape();
+            for (let i = 0; i < 6; i++) {
+                const angle = (Math.PI / 3) * i;
+                const px = radius * Math.cos(angle);
+                const py = radius * Math.sin(angle);
+                if (i === 0) shape.moveTo(px, py);
+                else shape.lineTo(px, py);
+            }
+            shape.closePath();
+
+            // 1. 古文明石砌上層平台底座
+            const extrudeSettings = {
+                depth: 1.4,
+                bevelEnabled: true,
+                bevelSegments: 2,
+                steps: 1,
+                bevelSize: 0.4,
+                bevelThickness: 0.4
+            };
+            const geo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+            const mat = new THREE.MeshStandardMaterial({
+                color: stoneColorHex,
+                roughness: 0.85,
+                flatShading: true
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.rotation.x = Math.PI / 2;
+            mesh.position.y = 0;
+            mesh.receiveShadow = true;
+            mesh.castShadow = true;
+            group.add(mesh);
+
+            // 2. 宮崎駿風格暖綠/翠綠茵草頂面
+            const grassColor = isHub ? 0x8AB858 : (category === 'academic' ? 0x6EA64B : 0x7CB356);
+            const topGeo = new THREE.ShapeGeometry(shape);
+            const topMat = new THREE.MeshLambertMaterial({ color: grassColor });
+            const topMesh = new THREE.Mesh(topGeo, topMat);
+            topMesh.rotation.x = Math.PI / 2;
+            topMesh.position.y = 0.06;
+            topMesh.receiveShadow = true;
+            group.add(topMesh);
+
+            // 3. 浮空島下方自然崎嶇倒錐岩塊 (天空之城核心視覺特徵)
+            const rockDepth = radius * 1.45;
+            const rockGeo = new THREE.ConeGeometry(radius * 0.92, rockDepth, 7, 2);
+            // 微調頂點讓岩石更自然不規則
+            const posAttr = rockGeo.attributes.position;
+            for (let i = 0; i < posAttr.count; i++) {
+                const vy = posAttr.getY(i);
+                if (vy < rockDepth * 0.4 && vy > -rockDepth * 0.45) {
+                    posAttr.setX(i, posAttr.getX(i) * (0.88 + Math.sin(i * 3.1) * 0.14));
+                    posAttr.setZ(i, posAttr.getZ(i) * (0.88 + Math.cos(i * 2.7) * 0.14));
+                }
+            }
+            rockGeo.computeVertexNormals();
+            const rockMat = new THREE.MeshStandardMaterial({
+                color: 0x685C52,
+                roughness: 0.95,
+                flatShading: true
+            });
+            const rockCone = new THREE.Mesh(rockGeo, rockMat);
+            rockCone.rotation.x = Math.PI;
+            rockCone.position.y = -1.4 - rockDepth / 2;
+            group.add(rockCone);
+
+            // 4. 岩底發光飛行石微粒結晶
+            const botCrystal = new THREE.Mesh(
+                new THREE.OctahedronGeometry(isHub ? 0.9 : 0.55, 0),
+                new THREE.MeshStandardMaterial({
+                    color: 0x7DD3FC,
+                    emissive: 0x0EA5E9,
+                    emissiveIntensity: 0.8
+                })
+            );
+            botCrystal.position.y = -1.4 - rockDepth - 0.6;
+            group.add(botCrystal);
+            levitationCrystals.push({ mesh: botCrystal, baseY: botCrystal.position.y, speed: 0.004 });
+
+            // 5. 島嶼邊緣垂吊的綠藤與小石墩
+            const vineCount = isHub ? 6 : (radius > 7 ? 5 : 3);
+            const vineMat = new THREE.MeshLambertMaterial({ color: 0x4B7F38 });
+            for (let v = 0; v < vineCount; v++) {
+                const angle = (Math.PI * 2 / vineCount) * v + 0.25;
+                const vx = Math.cos(angle) * (radius * 0.96);
+                const vz = Math.sin(angle) * (radius * 0.96);
+                const vineLen = 1.6 + (v % 3) * 0.9;
+
+                const vine = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.04, vineLen, 5), vineMat);
+                vine.position.set(vx, -vineLen / 2 - 0.2, vz);
+                group.add(vine);
+            }
+
+            // 6. 在島嶼邊緣種植圓潤蓬鬆的日系手繪風樹木與小花叢
+            if (!isHub) {
+                const treeCount = radius > 7 ? 3 : 2;
+                for (let t = 0; t < treeCount; t++) {
+                    const angle = (Math.PI * 2 / treeCount) * t + 0.55;
+                    const dist = radius * 0.65;
+                    const tree = createTree();
+                    tree.position.set(Math.cos(angle) * dist, 0.06, Math.sin(angle) * dist);
+                    group.add(tree);
+                }
+            }
+
+            return group;
+        }
+
+        // 建立日系圓潤層次樹冠樹木 (吉卜力厚塗綠樹感)
+        function createTree() {
+            const tree = new THREE.Group();
+            const trunk = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.14, 0.24, 0.9, 6),
+                new THREE.MeshLambertMaterial({ color: 0x6B4423 })
+            );
+            trunk.position.y = 0.45;
+            trunk.castShadow = true;
+            tree.add(trunk);
+
+            const foliageColors = [0x4D8B31, 0x63A342, 0x3E7526];
+            const mainCrown = new THREE.Mesh(
+                new THREE.DodecahedronGeometry(0.85, 1),
+                new THREE.MeshLambertMaterial({ color: foliageColors[0], flatShading: true })
+            );
+            mainCrown.position.y = 1.35;
+            mainCrown.castShadow = true;
+            tree.add(mainCrown);
+
+            const subCrown = new THREE.Mesh(
+                new THREE.DodecahedronGeometry(0.58, 1),
+                new THREE.MeshLambertMaterial({ color: foliageColors[1], flatShading: true })
+            );
+            subCrown.position.set(0.35, 1.65, 0.2);
+            subCrown.castShadow = true;
+            tree.add(subCrown);
+
+            return tree;
+        }
+
+        // 建立宮崎駿歐風古文明／溫馨日系木石建築
+        function createBuildingNode(x, y, z, data, category = 'admin') {
+            const group = new THREE.Group();
+            group.position.set(x, y + 0.06, z);
+
+            // 石砌基座台階
+            const plinth = new THREE.Mesh(
+                new THREE.BoxGeometry(3.1, 0.35, 3.1),
+                new THREE.MeshStandardMaterial({ color: 0x8B8175, roughness: 0.9, flatShading: true })
+            );
+            plinth.position.y = 0.175;
+            plinth.receiveShadow = true;
+            plinth.castShadow = true;
+            group.add(plinth);
+
+            // 溫暖米白灰泥牆體 (搭配單位主題色作為屋瓦與門廊點綴)
+            const wallMat = new THREE.MeshStandardMaterial({ color: 0xFAF3E6, roughness: 0.75 });
+            const base = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.9, 2.5), wallMat);
+            base.position.y = 1.3;
+            base.castShadow = true;
+            base.receiveShadow = true;
+            group.add(base);
+
+            // 拱形木質大門
+            const door = new THREE.Mesh(
+                new THREE.BoxGeometry(0.65, 1.0, 0.15),
+                new THREE.MeshStandardMaterial({ color: 0x7C4A27, roughness: 0.8 })
+            );
+            door.position.set(0, 0.85, 1.26);
+            group.add(door);
+
+            // 溫暖發光小窗戶
+            const winMat = new THREE.MeshStandardMaterial({
+                color: 0xFEF08A,
+                emissive: 0xF59E0B,
+                emissiveIntensity: 0.35
+            });
+            const winLeft = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.45, 0.12), winMat);
+            winLeft.position.set(-0.72, 1.45, 1.26);
+            const winRight = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.45, 0.12), winMat);
+            winRight.position.set(0.72, 1.45, 1.26);
+            group.add(winLeft, winRight);
+
+            // 單位主題色斜屋頂 (保留每個單位原本的識別色並增添日系陶瓦質感)
+            const roofGeo = new THREE.ConeGeometry(2.2, 1.45, 4);
+            const roofMat = new THREE.MeshStandardMaterial({
+                color: data.color || 0xD97706,
+                roughness: 0.55,
+                flatShading: true
+            });
+            const roof = new THREE.Mesh(roofGeo, roofMat);
+            roof.position.y = 2.95;
+            roof.rotation.y = Math.PI / 4;
+            roof.castShadow = true;
+            group.add(roof);
+
+            // 屋頂小煙囪 / 天窗塔尖
+            const chimney = new THREE.Mesh(
+                new THREE.BoxGeometry(0.42, 0.9, 0.42),
+                new THREE.MeshStandardMaterial({ color: 0x9E6B4B, roughness: 0.85 })
+            );
+            chimney.position.set(0.65, 3.1, -0.45);
+            chimney.castShadow = true;
+            group.add(chimney);
+
+            // 學術單位額外加上側邊小圓塔或溫室拱廊，強化天空之城城堡層次感
+            if (category === 'academic') {
+                const turret = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.55, 0.62, 2.3, 8),
+                    wallMat
+                );
+                turret.position.set(-1.35, 1.5, -0.8);
+                turret.castShadow = true;
+                group.add(turret);
+
+                const turretCap = new THREE.Mesh(
+                    new THREE.ConeGeometry(0.75, 0.95, 8),
+                    roofMat
+                );
+                turretCap.position.set(-1.35, 3.1, -0.8);
+                turretCap.castShadow = true;
+                group.add(turretCap);
+            }
+
+            group.userData = { id: data.id, name: data.name };
+            return group;
+        }
+
+        // 建立天空之城懸空石拱橋樑與兩側石柱護欄
+        function createBridge(x1, z1, x2, z2) {
+            const dx = x2 - x1;
+            const dz = z2 - z1;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            const angle = Math.atan2(dz, dx);
+
+            const bridgeGroup = new THREE.Group();
+            bridgeGroup.position.set((x1 + x2) / 2, 0.02, (z1 + z2) / 2);
+            bridgeGroup.rotation.y = -angle;
+
+            // 石板橋面
+            const deckGeo = new THREE.BoxGeometry(dist, 0.32, 1.45);
+            const deckMat = new THREE.MeshStandardMaterial({ color: 0xB5AA99, roughness: 0.85, flatShading: true });
+            const deck = new THREE.Mesh(deckGeo, deckMat);
+            deck.receiveShadow = true;
+            bridgeGroup.add(deck);
+
+            // 兩側古老石護欄邊緣
+            const railGeo = new THREE.BoxGeometry(dist, 0.22, 0.16);
+            const railMat = new THREE.MeshStandardMaterial({ color: 0x7D7467, roughness: 0.9 });
+            const railL = new THREE.Mesh(railGeo, railMat);
+            railL.position.set(0, 0.24, 0.65);
+            const railR = new THREE.Mesh(railGeo, railMat);
+            railR.position.set(0, 0.24, -0.65);
+            bridgeGroup.add(railL, railR);
+
+            scene.add(bridgeGroup);
+        }
+
+        // 建立角色
+        function createPlayer() {
+            playerMesh = new THREE.Group();
+
+            const bodyGeo = new THREE.CylinderGeometry(0.45, 0.55, 1.1, 16);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xDC2626, roughness: 0.4 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.55;
+            body.castShadow = true;
+            playerMesh.add(body);
+
+            const headGeo = new THREE.SphereGeometry(0.45, 16, 16);
+            const headMat = new THREE.MeshStandardMaterial({ color: 0xFFEDD5, roughness: 0.5 });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = 1.35;
+            head.castShadow = true;
+            playerMesh.add(head);
+
+            // 可愛小帽子
+            const hatGeo = new THREE.CylinderGeometry(0.48, 0.48, 0.25, 16);
+            const hatMat = new THREE.MeshStandardMaterial({ color: 0x1E3A8A });
+            const hat = new THREE.Mesh(hatGeo, hatMat);
+            hat.position.y = 1.68;
+            playerMesh.add(hat);
+
+            playerMesh.position.set(0, 0.1, 3.2);
+            scene.add(playerMesh);
+        }
+
+        // 設定流暢的相機滑鼠與觸控控制器
+        function setupCameraControls() {
+            const dom = renderer.domElement;
+
+            // 滑鼠按下
+            dom.addEventListener('mousedown', (e) => {
+                camControl.isDragging = true;
+                camControl.prevMouse = { x: e.clientX, y: e.clientY };
+                isFollowingPlayer = false;
+                updateFollowBtnUI();
+            });
+
+            // 滑鼠移動旋轉視角
+            window.addEventListener('mousemove', (e) => {
+                if (!camControl.isDragging) return;
+                const dx = e.clientX - camControl.prevMouse.x;
+                const dy = e.clientY - camControl.prevMouse.y;
+                camControl.prevMouse = { x: e.clientX, y: e.clientY };
+
+                camControl.desiredSpherical.theta -= dx * 0.007;
+                camControl.desiredSpherical.phi -= dy * 0.007;
+                // 限制俯仰角度避免穿入地底
+                camControl.desiredSpherical.phi = Math.max(0.2, Math.min(Math.PI / 2.15, camControl.desiredSpherical.phi));
+            });
+
+            // 滑鼠放開
+            window.addEventListener('mouseup', () => {
+                camControl.isDragging = false;
+            });
+
+            // 滾輪縮放
+            dom.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                camControl.desiredSpherical.radius += e.deltaY * 0.06;
+                camControl.desiredSpherical.radius = Math.max(22, Math.min(165, camControl.desiredSpherical.radius));
+            }, { passive: false });
+
+            // 觸控旋轉與雙指縮放支援
+            dom.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    camControl.isDragging = true;
+                    camControl.prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                    isFollowingPlayer = false;
+                    updateFollowBtnUI();
+                } else if (e.touches.length === 2) {
+                    camControl.isDragging = false;
+                    const dx = e.touches[0].clientX - e.touches[1].clientX;
+                    const dy = e.touches[0].clientY - e.touches[1].clientY;
+                    camControl.prevPinchDist = Math.hypot(dx, dy);
+                }
+            }, { passive: true });
+
+            dom.addEventListener('touchmove', (e) => {
+                if (e.touches.length === 1 && camControl.isDragging) {
+                    const dx = e.touches[0].clientX - camControl.prevMouse.x;
+                    const dy = e.touches[0].clientY - camControl.prevMouse.y;
+                    camControl.prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+
+                    camControl.desiredSpherical.theta -= dx * 0.008;
+                    camControl.desiredSpherical.phi -= dy * 0.008;
+                    camControl.desiredSpherical.phi = Math.max(0.2, Math.min(Math.PI / 2.15, camControl.desiredSpherical.phi));
+                } else if (e.touches.length === 2) {
+                    const dx = e.touches[0].clientX - e.touches[1].clientX;
+                    const dy = e.touches[0].clientY - e.touches[1].clientY;
+                    const dist = Math.hypot(dx, dy);
+                    const delta = camControl.prevPinchDist - dist;
+                    camControl.prevPinchDist = dist;
+
+                    camControl.desiredSpherical.radius += delta * 0.25;
+                    camControl.desiredSpherical.radius = Math.max(22, Math.min(165, camControl.desiredSpherical.radius));
+                }
+            }, { passive: true });
+
+            dom.addEventListener('touchend', () => {
+                camControl.isDragging = false;
+            });
+        }
+
+        // 根據球面座標更新相機位置
+        function updateCameraFromSpherical() {
+            const offset = new THREE.Vector3().setFromSpherical(camControl.spherical);
+            camera.position.copy(camControl.target).add(offset);
+            camera.lookAt(camControl.target);
+        }
+
+        // 重新繪製 2D HTML 標籤
+        function rebuildLandmarkLabels() {
+            const container = document.getElementById('labels-container');
+            container.innerHTML = landmarkNodes.map(item => `
+                <div id="label-${item.data.id}" onclick="selectNode('${item.data.id}')"
+                     class="node-label absolute px-2.5 py-1 md:px-3 md:py-1.5 rounded-full glass-panel shadow-md text-[11px] md:text-xs font-bold text-amber-950 flex items-center gap-1.5 cursor-pointer pointer-events-auto border ${selectedNodeId === item.data.id ? 'border-amber-600 ring-2 ring-amber-500/40 bg-white' : 'border-amber-900/10'}">
+                    <span class="w-4 h-4 md:w-5 md:h-5 rounded-full text-white text-[9px] md:text-[10px] flex items-center justify-center font-bold" style="background-color: ${item.data.color}">${item.data.code}</span>
+                    <span>${item.data.name}</span>
+                </div>
+            `).join('');
+
+            landmarkNodes.forEach(item => {
+                item.domLabel = document.getElementById(`label-${item.data.id}`);
+            });
+        }
+
+        // 更新標籤懸浮位置與防遮擋排版
+        function updateLabelsPosition() {
+            if (!showLabels) return;
+
+            const tempV = new THREE.Vector3();
+            const width = renderer.domElement.clientWidth;
+            const height = renderer.domElement.clientHeight;
+            const visibleLabels = [];
+
+            landmarkNodes.forEach(item => {
+                if (!item.domLabel) return;
+
+                if (item.type !== activeTab) {
+                    item.domLabel.style.display = 'none';
+                    return;
+                }
+
+                item.mesh.getWorldPosition(tempV);
+                tempV.y += 3.8;
+                tempV.project(camera);
+
+                const x = (tempV.x * .5 + .5) * width;
+                const y = (tempV.y * -.5 + .5) * height;
+
+                if (tempV.z < 1 && x > 10 && x < width - 10 && y > 20 && y < height - 10) {
+                    item.domLabel.style.display = 'flex';
+                    visibleLabels.push({ dom: item.domLabel, x: x, y: y });
+                } else {
+                    item.domLabel.style.display = 'none';
+                }
+            });
+
+            // 依畫面高度排序後進行防重疊微調
+            visibleLabels.sort((a, b) => a.y - b.y);
+            for (let i = 0; i < visibleLabels.length; i++) {
+                let current = visibleLabels[i];
+                for (let j = 0; j < i; j++) {
+                    let prev = visibleLabels[j];
+                    if (Math.abs(current.x - prev.x) < 95 && Math.abs(current.y - prev.y) < 30) {
+                        current.y = prev.y + 32;
+                    }
+                }
+                current.dom.style.left = `${current.x}px`;
+                current.dom.style.top = `${current.y}px`;
+            }
+        }
+
+        // 渲染右側詳細列表
+        function renderPanelList(filterText = '') {
+            const content = document.getElementById('panel-content');
+            const dataList = campusData[activeTab];
+
+            const filtered = dataList.filter(item => {
+                const srvText = item.serviceLinks ? item.serviceLinks.map(s => s.name + (s.subLinks ? ' ' + s.subLinks.map(sub => sub.name).join(' ') : '')).join(' ') : '';
+                const campText = item.campuses ? item.campuses.map(c => c.name + ' ' + c.grades).join(' ') : '';
+                const eqText = item.equipmentLinks ? item.equipmentLinks.map(e => e.name).join(' ') : (item.equipment ? item.equipment.join(' ') : '');
+                const resText = item.resultsLinks ? item.resultsLinks.map(r => r.name).join(' ') : (item.results ? item.results.join(' ') : '');
+                const text = (item.name + item.desc + srvText + campText + eqText + resText).toLowerCase();
+                return text.includes(filterText.toLowerCase());
+            });
+
+            if (filtered.length === 0) {
+                content.innerHTML = `<div class="text-center py-12 text-xs text-amber-900/40 font-bold">沒有找到符合的單位或資源</div>`;
+                return;
+            }
+
+            content.innerHTML = filtered.map(item => `
+                <div id="card-${item.id}" onclick="selectNode('${item.id}')" 
+                     class="p-4 rounded-2xl bg-white border ${selectedNodeId === item.id ? 'border-amber-700 ring-2 ring-amber-500/25 shadow-md' : 'border-amber-900/10'} hover:border-amber-600/50 transition cursor-pointer group">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-2">
+                            <span class="w-6 h-6 rounded-lg text-white text-xs font-bold flex items-center justify-center shadow-sm" style="background-color: ${item.color}">${item.code}</span>
+                            <h3 class="font-bold text-sm text-amber-950 group-hover:text-amber-700 transition">${item.name}</h3>
+                        </div>
+                        <i class="fa-solid ${item.icon || 'fa-building'} text-xs text-amber-900/30 group-hover:text-amber-700 transition"></i>
+                    </div>
+                    <p class="text-xs text-amber-900/75 leading-relaxed mb-3">${item.desc}</p>
+
+                    ${item.campuses ? `
+                        <div class="mt-3 pt-3 border-t border-amber-900/5">
+                            <div class="text-[11px] font-bold text-sky-800 mb-1.5 flex items-center gap-1">
+                                <i class="fa-solid fa-school text-sky-600"></i> 校區配置
+                            </div>
+                            <div class="flex flex-wrap gap-1.5">
+                                ${item.campuses.map(c => `
+                                    <div class="px-2.5 py-1 rounded-lg bg-sky-100/70 text-sky-950 text-[11px] font-medium flex items-center gap-1.5">
+                                        <span class="font-bold">${c.name}</span>
+                                        <span class="text-sky-700/80 text-[10px]">(${c.grades})</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    ${item.serviceLinks ? `
+                        <div class="mt-3 pt-3 border-t border-amber-900/5">
+                            <div class="text-[11px] font-bold text-amber-800 mb-1.5 flex items-center gap-1">
+                                <i class="fa-solid fa-link text-amber-600"></i> 業務服務與資源連結
+                            </div>
+                            <div class="flex flex-col gap-1.5">
+                                ${item.serviceLinks.map(srv => srv.subLinks ? `
+                                    <div class="p-2 rounded-lg bg-amber-50/90 border border-amber-900/10">
+                                        <div class="text-[11px] font-bold text-amber-950 mb-1.5 flex items-center gap-1">
+                                            <i class="fa-solid fa-folder-open text-amber-600 text-[10px]"></i>
+                                            <span>${srv.name}</span>
+                                        </div>
+                                        <div class="flex flex-col gap-1 pl-2">
+                                            ${srv.subLinks.map(sub => `
+                                                <a href="${sub.url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" class="px-2.5 py-1 rounded-md bg-amber-100/80 hover:bg-amber-200/90 text-amber-900 text-[11px] font-medium flex items-center justify-between transition group/link">
+                                                    <span>${sub.name}</span>
+                                                    <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-amber-700 opacity-70 group-hover/link:opacity-100"></i>
+                                                </a>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                ` : `
+                                    <a href="${srv.url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" class="px-2.5 py-1.5 rounded-lg bg-amber-100/60 hover:bg-amber-200/80 text-amber-900 text-[11px] font-medium flex items-center justify-between transition group/link">
+                                        <span>${srv.name}</span>
+                                        <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-amber-700 opacity-70 group-hover/link:opacity-100"></i>
+                                    </a>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+                    
+                    ${item.equipmentLinks ? `
+                        <div class="mt-3 pt-3 border-t border-amber-900/5">
+                            <div class="text-[11px] font-bold text-amber-800 mb-1.5 flex items-center gap-1">
+                                <i class="fa-solid fa-microscope text-amber-600"></i> 專業設備
+                            </div>
+                            <div class="flex flex-col gap-1.5">
+                                ${item.equipmentLinks.map(eq => `
+                                    <a href="${eq.url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" class="px-2.5 py-1.5 rounded-lg bg-amber-100/60 hover:bg-amber-200/80 text-amber-900 text-[11px] font-medium flex items-center justify-between transition group/link">
+                                        <span class="leading-snug pr-2">${eq.name}</span>
+                                        <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-amber-700 opacity-70 group-hover/link:opacity-100 flex-shrink-0"></i>
+                                    </a>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : (item.equipment ? `
+                        <div class="mt-3 pt-3 border-t border-amber-900/5">
+                            <div class="text-[11px] font-bold text-amber-800 mb-1.5 flex items-center gap-1">
+                                <i class="fa-solid fa-microscope text-amber-600"></i> 專業設備
+                            </div>
+                            <div class="flex flex-wrap gap-1.5">
+                                ${item.equipment.map(eq => `<span class="px-2 py-0.5 rounded-md bg-amber-100/70 text-amber-900 text-[10px] font-medium">${eq}</span>`).join('')}
+                            </div>
+                        </div>
+                    ` : '')}
+
+                    ${item.resultsLinks ? `
+                        <div class="mt-3">
+                            <div class="text-[11px] font-bold text-emerald-800 mb-1.5 flex items-center gap-1">
+                                <i class="fa-solid fa-trophy text-emerald-600"></i> ${item.resultsLabel || '教育成果'}
+                            </div>
+                            <div class="flex flex-col gap-1.5">
+                                ${item.resultsLinks.map(res => `
+                                    <a href="${res.url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" class="px-2.5 py-1.5 rounded-lg bg-emerald-100/60 hover:bg-emerald-200/80 text-emerald-950 text-[11px] font-medium flex items-center justify-between transition group/link">
+                                        <span>${res.name}</span>
+                                        <i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-emerald-700 opacity-70 group-hover/link:opacity-100"></i>
+                                    </a>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : (item.results ? `
+                        <div class="mt-2.5">
+                            <div class="text-[11px] font-bold text-emerald-800 mb-1.5 flex items-center gap-1">
+                                <i class="fa-solid fa-trophy text-emerald-600"></i> ${item.resultsLabel || '教育成果'}
+                            </div>
+                            <div class="flex flex-wrap gap-1.5">
+                                ${item.results.map(res => `<span class="px-2 py-0.5 rounded-md bg-emerald-100/70 text-emerald-950 text-[10px] font-medium">${res}</span>`).join('')}
+                            </div>
+                        </div>
+                    ` : '')}
+                </div>
+            `).join('');
+        }
+
+        // 選擇點擊單位並平滑聚焦鏡頭
+        function selectNode(id) {
+            selectedNodeId = id;
+            isFollowingPlayer = false;
+            updateFollowBtnUI();
+
+            const target = landmarkNodes.find(n => n.data.id === id);
+
+            if (target) {
+                const p = target.mesh.position;
+                // 設定平滑移動目標
+                camControl.desiredTarget.set(p.x, 0, p.z);
+                camControl.desiredSpherical.radius = 36;
+                camControl.desiredSpherical.phi = 0.78;
+
+                // 角色移動至目標建築前方
+                playerMesh.position.set(p.x + 2.2, 0.1, p.z + 2.2);
+            }
+
+            // 更新選單 Tab 頁面
+            const isAcademic = campusData.academic.some(a => a.id === id);
+            if (isAcademic && activeTab !== 'academic') {
+                switchTab('academic');
+            } else if (!isAcademic && activeTab !== 'admin') {
+                switchTab('admin');
+            } else {
+                rebuildLandmarkLabels();
+                renderPanelList(document.getElementById('search-input').value);
+            }
+
+            // 滾動面板至指定項目
+            setTimeout(() => {
+                const el = document.getElementById(`card-${id}`);
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 80);
+        }
+
+        // 切換 Tab
+        function switchTab(tab) {
+            activeTab = tab;
+            const btnAdmin = document.getElementById('tab-admin');
+            const btnAcademic = document.getElementById('tab-academic');
+
+            if (tab === 'admin') {
+                btnAdmin.className = 'flex-1 py-2 text-xs font-bold rounded-lg bg-amber-900 text-white shadow-sm transition flex items-center justify-center gap-1.5';
+                btnAcademic.className = 'flex-1 py-2 text-xs font-bold rounded-lg bg-white/80 text-amber-900 border border-amber-900/10 hover:bg-white transition flex items-center justify-center gap-1.5';
+            } else {
+                btnAcademic.className = 'flex-1 py-2 text-xs font-bold rounded-lg bg-amber-900 text-white shadow-sm transition flex items-center justify-center gap-1.5';
+                btnAdmin.className = 'flex-1 py-2 text-xs font-bold rounded-lg bg-white/80 text-amber-900 border border-amber-900/10 hover:bg-white transition flex items-center justify-center gap-1.5';
+            }
+
+            rebuildLandmarkLabels();
+            renderPanelList(document.getElementById('search-input').value);
+        }
+
+        function updateFollowBtnUI() {
+            const btn = document.getElementById('btn-focus-char');
+            if (isFollowingPlayer) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        }
+
+        // 綁定 UI 事件
+        function setupEvents() {
+            document.getElementById('tab-admin').addEventListener('click', () => switchTab('admin'));
+            document.getElementById('tab-academic').addEventListener('click', () => switchTab('academic'));
+
+            document.getElementById('search-input').addEventListener('input', (e) => {
+                renderPanelList(e.target.value);
+            });
+
+            // 全景視角
+            document.getElementById('btn-reset-cam').addEventListener('click', () => {
+                isFollowingPlayer = false;
+                updateFollowBtnUI();
+                selectedNodeId = null;
+                camControl.desiredTarget.set(0, 0, 0);
+                camControl.desiredSpherical.set(102, 0.85, 0);
+                rebuildLandmarkLabels();
+                renderPanelList(document.getElementById('search-input').value);
+            });
+
+            // 追蹤角色切換
+            document.getElementById('btn-focus-char').addEventListener('click', () => {
+                isFollowingPlayer = !isFollowingPlayer;
+                updateFollowBtnUI();
+                if (isFollowingPlayer) {
+                    camControl.desiredSpherical.radius = 30;
+                    camControl.desiredSpherical.phi = 0.8;
+                }
+            });
+
+            // 隱藏/顯示標籤
+            document.getElementById('btn-toggle-labels').addEventListener('click', () => {
+                showLabels = !showLabels;
+                document.getElementById('labels-container').style.display = showLabels ? 'block' : 'none';
+                document.getElementById('label-btn-text').innerText = showLabels ? '隱藏地標' : '顯示地標';
+            });
+
+            // 說明 Modal
+            const helpModal = document.getElementById('help-modal');
+            const helpBox = document.getElementById('help-modal-box');
+            document.getElementById('btn-help').addEventListener('click', () => {
+                helpModal.classList.remove('opacity-0', 'pointer-events-none');
+                helpBox.classList.remove('scale-95');
+                helpBox.classList.add('scale-100');
+            });
+            const closeHelp = () => {
+                helpModal.classList.add('opacity-0', 'pointer-events-none');
+                helpBox.classList.remove('scale-100');
+                helpBox.classList.add('scale-95');
+            };
+            document.getElementById('btn-close-help').addEventListener('click', closeHelp);
+            helpModal.addEventListener('click', (e) => {
+                if (e.target === helpModal) closeHelp();
+            });
+
+            // 天氣切換 (日系天空之城晴空 / 雲霧 / 星夜)
+            const weatherBtns = ['btn-weather-sun', 'btn-weather-cloud', 'btn-weather-night'];
+            const setActiveWeatherBtn = (activeId) => {
+                weatherBtns.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (id === activeId) {
+                        el.classList.add('bg-white', 'shadow');
+                    } else {
+                        el.classList.remove('bg-white', 'shadow');
+                    }
+                });
+            };
+
+            document.getElementById('btn-weather-sun').addEventListener('click', () => {
+                setActiveWeatherBtn('btn-weather-sun');
+                scene.background = new THREE.Color(0x7CC5E8);
+                scene.fog.color = new THREE.Color(0xBCE3F5);
+                ambientLight.intensity = 0.45;
+                dirLight.intensity = 1.05;
+            });
+            document.getElementById('btn-weather-cloud').addEventListener('click', () => {
+                setActiveWeatherBtn('btn-weather-cloud');
+                scene.background = new THREE.Color(0x9BB2C4);
+                scene.fog.color = new THREE.Color(0xB8CBD9);
+                ambientLight.intensity = 0.4;
+                dirLight.intensity = 0.55;
+            });
+            document.getElementById('btn-weather-night').addEventListener('click', () => {
+                setActiveWeatherBtn('btn-weather-night');
+                scene.background = new THREE.Color(0x0B152C);
+                scene.fog.color = new THREE.Color(0x132242);
+                ambientLight.intensity = 0.25;
+                dirLight.intensity = 0.35;
+            });
+
+            // 鍵盤移動控制器
+            window.addEventListener('keydown', e => {
+                if (document.activeElement.tagName === 'INPUT') return;
+                keyState[e.key] = true;
+            });
+            window.addEventListener('keyup', e => keyState[e.key] = false);
+        }
+
+        // 處理角色鍵盤移動與彈跳動畫
+        function handlePlayerMovement(time) {
+            const speed = 0.35;
+            let moved = false;
+            if (keyState['ArrowUp'] || keyState['w'] || keyState['W']) { playerMesh.position.z -= speed; moved = true; }
+            if (keyState['ArrowDown'] || keyState['s'] || keyState['S']) { playerMesh.position.z += speed; moved = true; }
+            if (keyState['ArrowLeft'] || keyState['a'] || keyState['A']) { playerMesh.position.x -= speed; moved = true; }
+            if (keyState['ArrowRight'] || keyState['d'] || keyState['D']) { playerMesh.position.x += speed; moved = true; }
+
+            if (moved) {
+                playerMesh.position.y = 0.1 + Math.abs(Math.sin(time * 0.015)) * 0.35;
+            } else {
+                playerMesh.position.y = 0.1 + Math.sin(time * 0.004) * 0.06;
+            }
+
+            if (isFollowingPlayer) {
+                camControl.desiredTarget.copy(playerMesh.position);
+            }
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('game-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        // 渲染主循環 Loop
+        function animate(time = 0) {
+            requestAnimationFrame(animate);
+
+            // 雲朵緩慢飄動
+            clouds.forEach(c => {
+                c.mesh.position.x += c.speed;
+                if (c.mesh.position.x > 85) c.mesh.position.x = -85;
+            });
+
+            // 遠景浮空小島上下緩慢呼吸漂浮
+            floatingIslands.forEach(fi => {
+                fi.mesh.position.y = fi.baseY + Math.sin(time * 0.001 + fi.phase) * 1.2;
+            });
+
+            // 飛行石結晶自轉與懸浮
+            levitationCrystals.forEach(cr => {
+                cr.mesh.rotation.y += 0.025;
+                cr.mesh.position.y = cr.baseY + Math.sin(time * cr.speed) * 0.35;
+            });
+
+            // 天空飛鳥盤旋與拍翅
+            birds.forEach(b => {
+                b.angle += b.speed;
+                b.group.position.x = Math.cos(b.angle) * b.radius;
+                b.group.position.z = Math.sin(b.angle) * b.radius;
+                b.group.position.y = b.height + Math.sin(time * 0.002 + b.flapOffset) * 1.2;
+                b.group.rotation.y = -b.angle;
+                const flap = Math.sin(time * 0.015 + b.flapOffset) * 0.55;
+                b.leftWing.rotation.z = flap;
+                b.rightWing.rotation.z = -flap;
+            });
+
+            // 選中建築微幅懸浮律動
+            landmarkNodes.forEach(node => {
+                if (node.data.id === selectedNodeId) {
+                    node.mesh.position.y = 0.06 + Math.abs(Math.sin(time * 0.005)) * 0.5;
+                } else {
+                    node.mesh.position.y = 0.06;
+                }
+            });
+
+            handlePlayerMovement(time);
+
+            // 相機平滑插值過渡
+            camControl.target.lerp(camControl.desiredTarget, 0.08);
+            camControl.spherical.radius += (camControl.desiredSpherical.radius - camControl.spherical.radius) * 0.08;
+            camControl.spherical.phi += (camControl.desiredSpherical.phi - camControl.spherical.phi) * 0.08;
+            camControl.spherical.theta += (camControl.desiredSpherical.theta - camControl.spherical.theta) * 0.08;
+            updateCameraFromSpherical();
+
+            updateLabelsPosition();
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
